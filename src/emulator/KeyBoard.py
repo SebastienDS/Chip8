@@ -32,7 +32,7 @@ class KeyBoard:
     def wait_key_pressed(self) -> int:
         while True:
             event = pygame.event.wait()
-            if event.type == pygame.quit:
+            if event.type == pygame.QUIT:
                 exit()
             elif event.type == pygame.KEYDOWN:
                 key_value = KEY_MAPPINGS.get(event.key)
