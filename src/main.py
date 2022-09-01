@@ -12,6 +12,11 @@ TIMER_EVENT = pygame.USEREVENT + 1
 pygame.time.set_timer(TIMER_EVENT, 15)
 
 
+if len(sys.argv) < 2:
+    print("A valid game from the roms directory must be given in argument")
+    exit(1)
+
+
 rom = Rom(Path("roms", sys.argv[1]))
 
 chip8 = Chip8()
