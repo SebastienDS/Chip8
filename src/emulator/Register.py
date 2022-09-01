@@ -11,10 +11,9 @@ class RegisterType(Enum):
 
 
 class Register:
-    MAX_VALUES = 256
-
-    def __init__(self, content: int):
+    def __init__(self, content: int, max_values):
         self.content = content
+        self.max_values = max_values
         self.overflow_flag = False
         self.borrow_flag = False
 
@@ -36,7 +35,7 @@ class Register:
 
     def add(self, value: int):
         self.content += value
-        self.perform_overflow()
+        self.resize_register()
 
     def resize_register(self):
         self.overflow_flag = False
@@ -48,13 +47,13 @@ class Register:
             self.perform_overflow()
 
     def perform_overflow(self):
-        while self.content >= Register.MAX_VALUES:
-            self.content -= Register.MAX_VALUES
+        if self.content >= self.max_values:
+            self.content -= self.max_values
             self.overflow_flag = True
 
     def perform_borrow(self):
-        while self.content < 0:
-            self.content += Register.MAX_VALUES
+        if self.content < 0:
+            self.content += self.max_values
             self.borrow_flag = True
 
     def get_overflow_flag(self):
