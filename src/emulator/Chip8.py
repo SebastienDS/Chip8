@@ -4,7 +4,8 @@ from typing import Callable
 from emulator.Display import Display
 from emulator.Memory import Memory
 from emulator.Rom import Rom
-from emulator.Register import Register, RegisterType
+from emulator.Register import Register
+from emulator.RegisterContainer import RegisterContainer
 from emulator.KeyBoard import KeyBoard
 from fontset import fontset
 
@@ -22,14 +23,7 @@ class Chip8:
         self.memory = Memory(MAX_MEMORY)
         self.keyboard = KeyBoard()
         self.display = Display(SCREEN_WIDTH, SCREEN_HEIGHT, 10)
-        self.registers = {
-            RegisterType.GENERAL_PURPOSE: [Register(0, 1 << 8) for _ in range(NUM_REGISTERS)],
-            RegisterType.INDEX: Register(0, 1 << 16),
-            RegisterType.STACK_POINTER: Register(STACK_POINTER_START, 1 << 8),
-            RegisterType.PROGRAM_COUNTER: Register(PROGRAM_COUNTER_START, 1 << 16),
-            RegisterType.DELAY_TIMER: Register(0, 1 << 8),
-            RegisterType.SOUND_TIMER: Register(0, 1 << 8)
-        }
+        self.registers = RegisterContainer(NUM_REGISTERS, PROGRAM_COUNTER_START, STACK_POINTER_START)
         self.rom_length = 0
         self.load_fontset()
 
@@ -86,7 +80,7 @@ class Chip8:
         logging.debug(self.memory)
     
     def step(self):
-        assert self.registers[RegisterType.PROGRAM_COUNTER].get() - 0x200 < self.rom_length
+        assert self.registers.program_counter.get() - 0x200 < self.rom_length
 
         opcode = self.fetch_opcode()
         opcode_action = self.decode_opcode(opcode)
@@ -95,7 +89,7 @@ class Chip8:
             self.next_instruction()
 
     def fetch_opcode(self) -> int:
-        counter = self.registers[RegisterType.PROGRAM_COUNTER].get()
+        counter = self.registers.program_counter.get()
         return self.memory.get(counter) << 8 | self.memory.get(counter + 1)
 
     def decode_opcode(self, opcode: int) -> Callable[[int], bool]:
@@ -107,8 +101,8 @@ class Chip8:
 
     def update_timers(self):
         logging.debug("timers updated")
-        self.update_timer(self.registers[RegisterType.DELAY_TIMER])
-        self.update_timer(self.registers[RegisterType.SOUND_TIMER])
+        self.update_timer(self.registers.delay_timer)
+        self.update_timer(self.registers.sound_timer)
 
     def update_timer(self, register: Register):
         if register.get() > 0:
@@ -116,7 +110,7 @@ class Chip8:
         
     def next_instruction(self):
         logging.debug("next instruction")
-        self.registers[RegisterType.PROGRAM_COUNTER].add(2)
+        self.registers.program_counter.add(2)
 
     def load_fontset(self):
         logging.debug("loading fontset")
@@ -138,8 +132,8 @@ class Chip8:
 
     def return_from_subroutine(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " return from subroutine")
-        stack_pointer_register = self.registers[RegisterType.STACK_POINTER]
-        program_counter_register = self.registers[RegisterType.PROGRAM_COUNTER]
+        stack_pointer_register = self.registers.stack_pointer
+        program_counter_register = self.registers.program_counter
 
         stack_pointer_register.decrement()
         address = self.memory.get(stack_pointer_register.get())
@@ -149,13 +143,13 @@ class Chip8:
     def jump_to_address(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " jump to address")
         address = opcode & 0x0FFF
-        self.registers[RegisterType.PROGRAM_COUNTER].set(address)
+        self.registers.program_counter.set(address)
         return False
 
     def call_subroutine(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " call subroutine")
-        stack_pointer_register = self.registers[RegisterType.STACK_POINTER]
-        program_counter_register = self.registers[RegisterType.PROGRAM_COUNTER]
+        stack_pointer_register = self.registers.stack_pointer
+        program_counter_register = self.registers.program_counter
         address = opcode & 0x0FFF
 
         self.memory.set(stack_pointer_register.get(), program_counter_register.get())
@@ -168,7 +162,7 @@ class Chip8:
         register = (opcode & 0x0F00) >> 8
         value = opcode & 0x00FF
         
-        if self.registers[RegisterType.GENERAL_PURPOSE][register].get() == value:
+        if self.registers.general_purpose[register].get() == value:
             self.next_instruction()
         return True
 
@@ -177,13 +171,13 @@ class Chip8:
         register = (opcode & 0x0F00) >> 8
         value = opcode & 0x00FF
         
-        if self.registers[RegisterType.GENERAL_PURPOSE][register].get() != value:
+        if self.registers.general_purpose[register].get() != value:
             self.next_instruction()
         return True
 
     def skip_if_reg_equal_reg(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " skip if reg equal reg")
-        general_registers = self.registers[RegisterType.GENERAL_PURPOSE]
+        general_registers = self.registers.general_purpose
         register1 = (opcode & 0x0F00) >> 8
         register2 = (opcode & 0x00F0) >> 4
 
@@ -195,14 +189,14 @@ class Chip8:
         logging.debug(hex(opcode) + " move value to reg")
         register = (opcode & 0x0F00) >> 8
         value = opcode & 0x00FF
-        self.registers[RegisterType.GENERAL_PURPOSE][register].set(value)
+        self.registers.general_purpose[register].set(value)
         return True
 
     def add_value_to_reg(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " add value to reg")
         register = (opcode & 0x0F00) >> 8
         value = opcode & 0x00FF
-        self.registers[RegisterType.GENERAL_PURPOSE][register].add(value)
+        self.registers.general_purpose[register].add(value)
         return True
 
     def execute_logical_instruction(self, opcode: int) -> bool:
@@ -213,7 +207,7 @@ class Chip8:
 
     def move_reg_into_reg(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " move reg into reg")
-        general_registers = self.registers[RegisterType.GENERAL_PURPOSE]
+        general_registers = self.registers.general_purpose
         source = (opcode & 0x0F00) >> 8
         target = (opcode & 0x00F0) >> 4
 
@@ -222,7 +216,7 @@ class Chip8:
     
     def logical_or(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " logical or")
-        general_registers = self.registers[RegisterType.GENERAL_PURPOSE]
+        general_registers = self.registers.general_purpose
         source = (opcode & 0x0F00) >> 8
         target = (opcode & 0x00F0) >> 4
 
@@ -232,7 +226,7 @@ class Chip8:
 
     def logical_and(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " logical and")
-        general_registers = self.registers[RegisterType.GENERAL_PURPOSE]
+        general_registers = self.registers.general_purpose
         source = (opcode & 0x0F00) >> 8
         target = (opcode & 0x00F0) >> 4
 
@@ -242,7 +236,7 @@ class Chip8:
 
     def exclusive_or(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " exclusive or")
-        general_registers = self.registers[RegisterType.GENERAL_PURPOSE]
+        general_registers = self.registers.general_purpose
         source = (opcode & 0x0F00) >> 8
         target = (opcode & 0x00F0) >> 4
 
@@ -252,7 +246,7 @@ class Chip8:
 
     def add_reg_to_reg(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " and reg to reg")
-        general_registers = self.registers[RegisterType.GENERAL_PURPOSE]
+        general_registers = self.registers.general_purpose
         source = (opcode & 0x0F00) >> 8
         target = (opcode & 0x00F0) >> 4
 
@@ -263,7 +257,7 @@ class Chip8:
 
     def subtract_reg_from_reg(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " substract reg from reg")
-        general_registers = self.registers[RegisterType.GENERAL_PURPOSE]
+        general_registers = self.registers.general_purpose
         source = (opcode & 0x0F00) >> 8
         target = (opcode & 0x00F0) >> 4
 
@@ -274,7 +268,7 @@ class Chip8:
 
     def right_shift_reg(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " right shift reg")
-        general_registers = self.registers[RegisterType.GENERAL_PURPOSE]
+        general_registers = self.registers.general_purpose
         source = (opcode & 0x0F00) >> 8
 
         least_significant_bit = general_registers[source].get() & 0x1
@@ -284,7 +278,7 @@ class Chip8:
 
     def subtract_reg_from_reg1(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " substract reg from reg1")
-        general_registers = self.registers[RegisterType.GENERAL_PURPOSE]
+        general_registers = self.registers.general_purpose
         source = (opcode & 0x0F00) >> 8
         target = (opcode & 0x00F0) >> 4
 
@@ -295,7 +289,7 @@ class Chip8:
 
     def left_shift_reg(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " left shift reg")
-        general_registers = self.registers[RegisterType.GENERAL_PURPOSE]
+        general_registers = self.registers.general_purpose
         source = (opcode & 0x0F00) >> 8
 
         most_significant_bit = (general_registers[source].get() & 0x80) >> 8
@@ -305,7 +299,7 @@ class Chip8:
 
     def skip_if_reg_not_equal_reg(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " skip if reg not equal reg")
-        general_registers = self.registers[RegisterType.GENERAL_PURPOSE]
+        general_registers = self.registers.general_purpose
         register1 = (opcode & 0x0F00) >> 8
         register2 = (opcode & 0x00F0) >> 4
 
@@ -316,14 +310,14 @@ class Chip8:
     def load_index_reg_with_value(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " load index reg with value")
         value = opcode & 0x0FFF
-        self.registers[RegisterType.INDEX].set(value)
+        self.registers.index.set(value)
         return True
 
     def jump_to_reg0_plus_value(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " jump to reg0 plus value")
         address = opcode & 0x0FFF
-        destination = self.registers[RegisterType.GENERAL_PURPOSE][0x0].get() + address 
-        self.registers[RegisterType.PROGRAM_COUNTER].set(destination)
+        destination = self.registers.general_purpose[0x0].get() + address 
+        self.registers.program_counter.set(destination)
         return False
 
     def generate_random_number(self, opcode: int) -> bool:
@@ -332,12 +326,12 @@ class Chip8:
         value = opcode & 0x00FF
         result = randint(0, 255) & value
 
-        self.registers[RegisterType.GENERAL_PURPOSE][register].set(result)
+        self.registers.general_purpose[register].set(result)
         return True
 
     def draw_sprite(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " draw sprite")
-        general_registers = self.registers[RegisterType.GENERAL_PURPOSE]
+        general_registers = self.registers.general_purpose
 
         register_x = (opcode & 0x0F00) >> 8
         register_y = (opcode & 0x00F0) >> 4
@@ -350,7 +344,7 @@ class Chip8:
 
         for j in range(n):
             y = (start_y + j) % self.display.get_height()
-            color_byte = self.memory.get(self.registers[RegisterType.INDEX].get() + j)
+            color_byte = self.memory.get(self.registers.index.get() + j)
 
             for i in range(8):
                 x = (start_x + i) % self.display.get_width()
@@ -369,7 +363,7 @@ class Chip8:
         operation = opcode & 0x00FF
         register = (opcode & 0x0F00) >> 8
 
-        key = self.registers[RegisterType.GENERAL_PURPOSE][register].get()
+        key = self.registers.general_purpose[register].get()
         
         match operation:
             case 0x9E:
@@ -390,50 +384,50 @@ class Chip8:
     def move_delay_timer_into_reg(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " move delay timer into reg")
         register = (opcode & 0x0F00) >> 8
-        delay_timer = self.registers[RegisterType.DELAY_TIMER].get()
-        self.registers[RegisterType.GENERAL_PURPOSE][register].set(delay_timer)
+        delay_timer = self.registers.delay_timer.get()
+        self.registers.general_purpose[register].set(delay_timer)
         return True
 
     def wait_for_keypress(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " wait for keypress")
         register = (opcode & 0x0F00) >> 8
         key_value = self.keyboard.wait_key_pressed()
-        self.registers[RegisterType.GENERAL_PURPOSE][register].set(key_value)
+        self.registers.general_purpose[register].set(key_value)
         return True
 
     def move_reg_into_delay_timer(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " move reg into delay timer")
         register = (opcode & 0x0F00) >> 8
-        delay_timer = self.registers[RegisterType.GENERAL_PURPOSE][register].get()
-        self.registers[RegisterType.DELAY_TIMER].set(delay_timer)
+        delay_timer = self.registers.general_purpose[register].get()
+        self.registers.delay_timer.set(delay_timer)
         return True
 
     def move_reg_into_sound_timer(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " move reg into sound timer")
         register = (opcode & 0x0F00) >> 8
-        sound_timer = self.registers[RegisterType.GENERAL_PURPOSE][register].get()
-        self.registers[RegisterType.SOUND_TIMER].set(sound_timer)
+        sound_timer = self.registers.general_purpose[register].get()
+        self.registers.sound_timer.set(sound_timer)
         return True
 
     def add_reg_into_index(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " add reg into index")
         register = (opcode & 0x0F00) >> 8
-        value = self.registers[RegisterType.GENERAL_PURPOSE][register].get()
-        self.registers[RegisterType.INDEX].add(value)
+        value = self.registers.general_purpose[register].get()
+        self.registers.index.add(value)
         return True
 
     def load_index_with_reg_sprite(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " load index with reg sprite")
         register = (opcode & 0x0F00) >> 8
-        value = self.registers[RegisterType.GENERAL_PURPOSE][register].get()
-        self.registers[RegisterType.INDEX].add(value * 5)
+        value = self.registers.general_purpose[register].get()
+        self.registers.index.add(value * 5)
         return True
 
     def store_bcd_in_memory(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " store bcd in memory")
         register = (opcode & 0x0F00) >> 8
-        index = self.registers[RegisterType.INDEX].get()
-        value = self.registers[RegisterType.GENERAL_PURPOSE][register].get()
+        index = self.registers.index.get()
+        value = self.registers.general_purpose[register].get()
         bcd_value = "{:03d}".format(value)
 
         self.memory.set(index, int(bcd_value[0]))
@@ -444,20 +438,20 @@ class Chip8:
     def store_regs_in_memory(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " store regs in memory")
         last_register = (opcode & 0x0F00) >> 8
-        index = self.registers[RegisterType.INDEX].get()
+        index = self.registers.index.get()
 
         for i in range(last_register + 1):
-            content = self.registers[RegisterType.GENERAL_PURPOSE][i].get()
+            content = self.registers.general_purpose[i].get()
             self.memory.set(index + i, content)
         return True
 
     def read_regs_from_memory(self, opcode: int) -> bool:
         logging.debug(hex(opcode) + " read regs from memory")
         last_register = (opcode & 0x0F00) >> 8
-        index = self.registers[RegisterType.INDEX].get()
+        index = self.registers.index.get()
 
         for i in range(last_register + 1):
-            register = self.registers[RegisterType.GENERAL_PURPOSE][i]
+            register = self.registers.general_purpose[i]
             content = self.memory.get(index + i)
             register.set(content)
         return True

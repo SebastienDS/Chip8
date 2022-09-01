@@ -1,15 +1,3 @@
-from enum import Enum
-
-
-class RegisterType(Enum):
-    GENERAL_PURPOSE = 1,
-    INDEX = 2,
-    STACK_POINTER = 3,
-    PROGRAM_COUNTER = 4,
-    DELAY_TIMER = 5,
-    SOUND_TIMER = 6
-
-
 class Register:
     def __init__(self, content: int, max_values):
         self.content = content
